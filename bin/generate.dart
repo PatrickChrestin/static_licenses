@@ -2,17 +2,42 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:yaml/yaml.dart';
 import 'package:path/path.dart' as p;
+import 'package:args/args.dart';
 
 Future<void> main(List<String> args) async {
-  await generateLicenses(workingDirectory: Directory.current.path, args: args);
-}
+  final parser = ArgParser()
+    ..addFlag(
+      'help',
+      abbr: 'h',
+      negatable: false,
+      help: 'Shows the usage and exits the script',
+    )
+    ..addOption(
+      'out',
+      abbr: 'o',
+      defaultsTo: 'lib',
+      help: 'Target directory for the generated file',
+    )
+    ..addOption(
+      'type',
+      abbr: 't',
+      allowed: ['main', 'dev', 'both'],
+      defaultsTo: 'main',
+      help: 'Filters which dependencies are exported',
+    );
 
-Future<void> generateLicenses({
-  required String workingDirectory,
-  required List<String> args,
-}) async {
-  // --- NEW: Display help menu ---
-  if (args.contains('--help') || args.contains('-h')) {
+  final ArgResults argResults;
+  try {
+    argResults = parser.parse(args);
+  } on FormatException catch (e) {
+    print(e.message);
+    print('');
+    print('Usage: dart run static_licenses:generate [options]');
+    print(parser.usage);
+    exit(64);
+  }
+
+  if (argResults.flag('help')) {
     print('Usage: dart run static_licenses:generate [options]');
     print('');
     print(
@@ -20,21 +45,32 @@ Future<void> generateLicenses({
     );
     print('');
     print('Options:');
-    print(
-      '  --out=<path>   Target directory for the generated file (e.g. --out=lib/src).',
-    );
-    print('                 Default: "lib"');
-    print('  --help, -h     Displays this help.');
-    return; // Exit script without generating anything
+    print(parser.usage);
+    exit(0);
   }
 
-  print('Reading pubspec.lock and filtering dev dependencies...');
+  final outputDir = argResults.option('out') as String;
+  final dependencyType = argResults.option('type') as String;
+
+  await generateLicenses(
+    workingDirectory: Directory.current.path,
+    outputDir: outputDir,
+    dependencyType: dependencyType,
+  );
+}
+
+Future<void> generateLicenses({
+  required String workingDirectory,
+  required String outputDir,
+  required String dependencyType,
+}) async {
+  print('Reading pubspec.lock and filtering dependencies...');
 
   // 1. Read and parse pubspec.lock
   final lockFile = File(p.join(workingDirectory, 'pubspec.lock'));
   if (!lockFile.existsSync()) {
     print('Error: pubspec.lock not found. Please run "flutter pub get".');
-    return;
+    exit(64);
   }
 
   final lockContent = await lockFile.readAsString();
@@ -47,10 +83,16 @@ Future<void> generateLicenses({
   for (final entry in lockPackages.entries) {
     final packageName = entry.key as String;
     final packageInfo = entry.value as YamlMap;
-    final dependencyType = packageInfo['dependency'] as String;
+    final typeInLockfile = packageInfo['dependency'] as String;
 
-    // We explicitly ignore pure development dependencies
-    if (dependencyType != 'direct dev') {
+    bool keep = true;
+    if (dependencyType == 'main') {
+      keep = typeInLockfile != 'direct dev';
+    } else if (dependencyType == 'dev') {
+      keep = typeInLockfile != 'direct main';
+    }
+
+    if (keep) {
       validPackages.add(packageName);
     }
   }
@@ -105,12 +147,7 @@ class PackageLicenseInfo {
     }
 
     File? licenseFile;
-    for (final fileName in [
-      'LICENSE',
-      'LICENSE.txt',
-      'LICENSE.md',
-      'LICENSE.md',
-    ]) {
+    for (final fileName in ['LICENSE', 'LICENSE.txt', 'LICENSE.md']) {
       final file = File(p.join(packageDir.path, fileName));
       if (file.existsSync()) {
         licenseFile = file;
@@ -139,15 +176,6 @@ class PackageLicenseInfo {
   }
 
   generatedCode.writeln('];');
-
-  // --- NEW: Evaluate arguments and determine path ---
-  String outputDir = 'lib'; // Default directory if none is specified
-
-  for (final arg in args) {
-    if (arg.startsWith('--out=')) {
-      outputDir = arg.substring(6); // Removes "--out="
-    }
-  }
 
   // Safe path construction (handles trailing slashes)
   final normalizedDir = outputDir.endsWith('/')

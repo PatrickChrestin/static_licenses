@@ -76,7 +76,8 @@ packages:
     // 4. Run the generator script
     await generate.generateLicenses(
       workingDirectory: workingDirectory,
-      args: ['--out=lib/src'],
+      outputDir: 'lib/src',
+      dependencyType: 'main',
     );
 
     // 5. Verify the generated output
