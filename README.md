@@ -29,10 +29,10 @@ To be honest and open about disadvantages:
 
 ### 1. Add the Dependency
 
-Add `static_licenses` to your `pubspec.yaml` dependencies:
+Add `static_licenses` to your `pubspec.yaml` under `dev_dependencies`:
 
 ```yaml
-dependencies:
+dev_dependencies:
   static_licenses: #latest
 ```
 

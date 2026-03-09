@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:yaml/yaml.dart';
@@ -147,11 +149,31 @@ class PackageLicenseInfo {
     }
 
     File? licenseFile;
+
+    // First try standard names
     for (final fileName in ['LICENSE', 'LICENSE.txt', 'LICENSE.md']) {
       final file = File(p.join(packageDir.path, fileName));
       if (file.existsSync()) {
         licenseFile = file;
         break;
+      }
+    }
+
+    // fallback: list directory and find file starting with "license" (case-insensitive)
+    if (licenseFile == null && packageDir.existsSync()) {
+      try {
+        final entities = packageDir.listSync();
+        for (final entity in entities) {
+          if (entity is File) {
+            final basename = p.basename(entity.path).toLowerCase();
+            if (basename.startsWith('license')) {
+              licenseFile = entity;
+              break;
+            }
+          }
+        }
+      } catch (_) {
+        // Ignore read errors
       }
     }
 
